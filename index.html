@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COMET OS v10</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --accent: #0078d4;
+            --accent-glow: rgba(0, 120, 212, 0.4);
+            --bg-base: #080c14;
+            --glass-panel: rgba(22, 27, 34, 0.94);
+            --glass-card: rgba(255, 255, 255, 0.05);
+            --glass-hover: rgba(255, 255, 255, 0.12);
+            --border-glass: rgba(255, 255, 255, 0.14);
+            --text-main: #f0f6fc;
+            --text-sub: #8b949e;
+            --radius-lg: 12px;
+            --radius-md: 8px;
+            --radius-sm: 6px;
+            --desktop-bg: url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1920&auto=format&fit=crop');
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; }
+        body, html { width: 100vw; height: 100vh; overflow: hidden; background: var(--bg-base); color: var(--text-main); }
+
+        #boot-screen {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #000; z-index: 100000; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.5s ease;
+        }
+        #boot-screen.fade-out { opacity: 0; pointer-events: none; }
+        .boot-icon { font-size: 64px; color: var(--accent); margin-bottom: 30px; filter: drop-shadow(0 0 20px var(--accent-glow)); }
+        .spinner { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #lock-screen {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.6)), var(--desktop-bg) center/cover no-repeat;
+            z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: transform 0.4s ease-in-out, opacity 0.4s ease-in-out;
+        }
+        #lock-screen.unlocked { transform: translateY(-100%); opacity: 0; pointer-events: none; }
+
+        .auth-card {
+            background: var(--glass-panel); backdrop-filter: blur(25px); border: 1px solid var(--border-glass);
+            padding: 32px; border-radius: var(--radius-lg); width: 340px; display: flex; flex-direction: column; align-items: center; gap: 14px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.6); transition: all 0.3s ease-in-out;
+        }
+        .login-avatar { width: 68px; height: 68px; background: linear-gradient(135deg, var(--accent), #005a9e); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: bold; }
+        .auth-field { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+        .auth-input { width: 100%; padding: 10px 12px; background: rgba(0,0,0,0.5); border: 1px solid var(--border-glass); border-radius: var(--radius-sm); color: white; outline: none; font-size: 13px; }
+        .auth-btn { width: 100%; padding: 10px; background: var(--accent); border: none; border-radius: var(--radius-sm); color: white; font-weight: 600; cursor: pointer; transition: filter 0.2s; }
+        .auth-btn:hover { filter: brightness(1.2); }
+        .auth-toggle-link { font-size: 11px; color: var(--text-sub); cursor: pointer; text-decoration: underline; margin-top: 4px; }
+        .auth-toggle-link:hover { color: var(--accent); }
+
+        #context-menu {
+            position: absolute; display: none; background: var(--glass-panel); backdrop-filter: blur(25px);
+            border: 1px solid var(--border-glass); border-radius: var(--radius-md); width: 220px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7); z-index: 1000000; padding: 6px; flex-direction: column; gap: 2px;
+        }
+        .ctx-header { font-size: 10px; font-weight: 700; color: var(--text-sub); padding: 6px 10px 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .ctx-item { padding: 8px 10px; border-radius: var(--radius-sm); font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 10px; color: var(--text-main); }
+        .ctx-item:hover { background: var(--accent); color: white; }
+        .ctx-item.danger:hover { background: #da3633; }
+        .ctx-divider { height: 1px; background: var(--border-glass); margin: 4px 0; }
+
+        #desktop {
+            width: 100vw; height: calc(100vh - 48px);
+            background: var(--desktop-bg) center/cover no-repeat;
+            position: relative; padding: 16px; display: flex; flex-direction: column; flex-wrap: wrap; align-content: flex-start; gap: 12px;
+        }
+        .app-icon {
+            width: 84px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer;
+            border-radius: var(--radius-sm); padding: 8px 4px; border: 1px solid transparent; transition: all 0.15s;
+        }
+        .app-icon:hover { background: var(--glass-hover); border-color: var(--border-glass); backdrop-filter: blur(8px); }
+        .app-icon i { font-size: 32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)); }
+        .app-icon img.custom-app-icon { width: 34px; height: 34px; border-radius: 6px; object-fit: cover; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)); }
+        .app-icon span { font-size: 11px; text-align: center; text-shadow: 0 1px 4px rgba(0,0,0,0.9); color: #fff; word-break: break-word; }
+
+        .os-window {
+            position: absolute; width: 850px; height: 560px;
+            background: var(--glass-panel); backdrop-filter: blur(20px);
+            border: 1px solid var(--border-glass); border-radius: var(--radius-md);
+            display: flex; flex-direction: column; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6); overflow: hidden;
+            min-width: 400px; min-height: 280px; opacity: 0; transform: scale(0.95); transition: opacity 0.15s ease, transform 0.15s ease;
+        }
+        .os-window.active { opacity: 1; transform: scale(1); }
+        .os-window.maximized { top: 0 !important; left: 0 !important; width: 100vw !important; height: calc(100vh - 48px) !important; border-radius: 0 !important; }
+        
+        .window-header {
+            height: 38px; background: rgba(18, 22, 28, 0.9); display: flex; align-items: center; justify-content: space-between;
+            padding-left: 12px; cursor: move; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .window-title { font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+        .window-controls { display: flex; height: 100%; }
+        .control-btn { width: 44px; height: 100%; border: none; background: transparent; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 11px; }
+        .control-btn:hover { background: var(--glass-hover); }
+        .btn-close:hover { background: #e81123; color: white; }
+        .window-content { flex: 1; position: relative; background: #0d1117; overflow: auto; padding: 14px; display: flex; flex-direction: column; }
+
+        #taskbar {
+            width: 100vw; height: 48px; background: rgba(14, 17, 23, 0.9); backdrop-filter: blur(20px);
+            position: absolute; bottom: 0; left: 0; display: flex; align-items: center; justify-content: space-between;
+            padding: 0 12px; border-top: 1px solid var(--border-glass); z-index: 9999;
+        }
+        .taskbar-left { display: flex; align-items: center; gap: 8px; }
+        .taskbar-center { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; }
+        .taskbar-right { display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--text-main); }
+        .taskbar-btn {
+            width: 40px; height: 40px; border-radius: var(--radius-sm); border: none; background: transparent;
+            cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; color: var(--text-main); position: relative;
+        }
+        .taskbar-btn:hover { background: var(--glass-hover); }
+        .taskbar-btn.active-win::after { content: ''; position: absolute; bottom: 2px; width: 16px; height: 3px; background: var(--accent); border-radius: 2px; }
+
+        .system-tray-group { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border-glass); }
+        .tray-item { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+
+        #start-menu {
+            position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%) translateY(20px);
+            width: 420px; height: 480px; background: var(--glass-panel); backdrop-filter: blur(25px);
+            border: 1px solid var(--border-glass); border-radius: var(--radius-lg); box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+            display: none; opacity: 0; transition: all 0.2s ease; z-index: 9998; padding: 20px; flex-direction: column; justify-content: space-between;
+        }
+        #start-menu.active { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); }
+        .start-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
+        .start-item { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px; border-radius: var(--radius-sm); cursor: pointer; }
+        .start-item:hover { background: var(--glass-hover); }
+        .start-item i { font-size: 24px; }
+        .start-item span { font-size: 11px; }
+
+        .btn-os { padding: 6px 14px; background: var(--accent); border: 1px solid rgba(255,255,255,0.15); color: white; font-size: 12px; border-radius: var(--radius-sm); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-os:hover { filter: brightness(1.2); }
+        .btn-os-danger { background: #da3633; }
+        input[type="text"], input[type="password"], textarea, select { width: 100%; background: rgba(0,0,0,0.5); border: 1px solid var(--border-glass); border-radius: var(--radius-sm); color: white; padding: 8px; outline: none; font-size: 12px; }
+
+        .store-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-top: 12px; }
+        .store-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: var(--radius-md); padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+        .store-card:hover { background: var(--glass-hover); }
+        .store-card i { font-size: 32px; }
+        .store-card img.store-icon-img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
+
+        .chat-container { display: flex; height: 100%; margin: -14px; background: #0b0e14; }
+        .chat-sidebar { width: 200px; border-right: 1px solid #30363d; background: #161b22; display: flex; flex-direction: column; }
+        .chat-main { flex: 1; display: flex; flex-direction: column; }
+        .server-item { padding: 10px; border-bottom: 1px solid #21262d; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .server-item:hover, .server-item.active { background: var(--accent); }
+    </style>
+</head>
+<body>
+
+    <div id="boot-screen">
+        <i class="fa-solid fa-microchip boot-icon"></i>
+        <div class="spinner"></div>
+        <div style="margin-top:20px; font-size:12px; color:#8b949e; letter-spacing:1px;" id="boot-status">STARTING COMET OS v10...</div>
+    </div>
+
+    <div id="lock-screen">
+        <div class="auth-card" id="auth-box">
+            <div class="login-avatar" id="lock-avatar"><i class="fa-solid fa-user"></i></div>
+            <div style="font-weight:600; font-size:16px;" id="auth-title">Sign In to COMET OS</div>
+            
+            <div class="auth-field">
+                <input type="text" id="auth-user-input" class="auth-input" placeholder="Enter Account Username">
+                <input type="password" id="auth-pass-input" class="auth-input" placeholder="Enter Passcode" onkeydown="if(event.key==='Enter') executeAuth()">
+            </div>
+
+            <button class="auth-btn" id="auth-main-btn" onclick="executeAuth()">Sign In</button>
+            <div id="auth-err" style="color:#f85149; font-size:11px; display:none;">Invalid Credentials</div>
+            <div class="auth-toggle-link" id="auth-toggle" onclick="toggleAuthMode()">New here? Register Account</div>
+        </div>
+    </div>
+
+    <div id="context-menu"></div>
+
+    <div id="desktop" onclick="hideContext()">
+        <div class="app-icon" data-app="app_store" onclick="openApp('app_store')">
+            <i class="fa-solid fa-store" style="color:#a855f7;"></i>
+            <span>App Store</span>
+        </div>
+        <div class="app-icon" data-app="app_publisher" onclick="openApp('app_publisher')">
+            <i class="fa-solid fa-upload" style="color:#38bdf8;"></i>
+            <span>Publisher</span>
+        </div>
+        <div class="app-icon" data-app="chat" onclick="openApp('chat')">
+            <i class="fa-brands fa-discord" style="color:#5865F2;"></i>
+            <span>Servers Chat</span>
+        </div>
+        <div class="app-icon" data-app="files" onclick="openApp('files')">
+            <i class="fa-solid fa-folder-open" style="color:#e3a835;"></i>
+            <span>Files</span>
+        </div>
+        <div class="app-icon" data-app="settings" onclick="openApp('settings')">
+            <i class="fa-solid fa-gear" style="color:#8b949e;"></i>
+            <span>Settings</span>
+        </div>
+        <div id="custom-desktop-apps" style="display:contents;"></div>
+    </div>
+
+    <div id="start-menu">
+        <div>
+            <input type="text" placeholder="Search apps & tools..." style="border-radius:20px; padding:8px 14px;">
+            <div class="start-grid">
+                <div class="start-item" onclick="openApp('app_store'); toggleStart();"><i class="fa-solid fa-store" style="color:#a855f7;"></i><span>App Store</span></div>
+                <div class="start-item" onclick="openApp('app_publisher'); toggleStart();"><i class="fa-solid fa-upload" style="color:#38bdf8;"></i><span>Publisher</span></div>
+                <div class="start-item" onclick="openApp('chat'); toggleStart();"><i class="fa-brands fa-discord" style="color:#5865F2;"></i><span>Chat</span></div>
+                <div class="start-item" onclick="openApp('files'); toggleStart();"><i class="fa-solid fa-folder-open" style="color:#e3a835;"></i><span>Files</span></div>
+            </div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid rgba(255,255,255,0.1); padding-top:12px;">
+            <div style="font-size:12px; font-weight:600;" id="start-user-label"><i class="fa-solid fa-circle-user"></i> COMET USER</div>
+            <div style="display:flex; gap:10px;">
+                <i class="fa-solid fa-right-from-bracket" style="color:#f85149; cursor:pointer;" title="Sign Out" onclick="signOutOS()"></i>
+                <i class="fa-solid fa-power-off" style="color:#8b949e; cursor:pointer;" title="Lock Screen" onclick="lockOS()"></i>
+            </div>
+        </div>
+    </div>
+
+    <div id="taskbar">
+        <div class="taskbar-left">
+            <button class="taskbar-btn" onclick="toggleStart()"><i class="fa-brands fa-windows" style="color:var(--accent);"></i></button>
+        </div>
+        <div class="taskbar-center" id="tb-apps"></div>
+        <div class="taskbar-right">
+            <div class="system-tray-group">
+                <div class="tray-item" id="battery-display"><i class="fa-solid fa-battery-full" style="color:#3fb950;"></i> 100%</div>
+                <div class="tray-item" id="date-display">Jan 1</div>
+                <div class="tray-item" style="font-weight:600;" id="clock-display">00:00</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="windows-container"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getDatabase, ref, push, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB0_-Jf3b74dkFr2VsQ7OYq6DzPqN5lb6s",
+            authDomain: "comet-os-v2.firebaseapp.com",
+            databaseURL: "https://comet-os-v2-default-rtdb.firebaseio.com",
+            projectId: "comet-os-v2",
+            storageBucket: "comet-os-v2.firebasestorage.app",
+            messagingSenderId: "74637587140",
+            appId: "1:74637587140:web:d175ed8401267892db8f91",
+            measurementId: "G-4J0P8167LY"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        let registeredAccounts = JSON.parse(localStorage.getItem('comet_accounts')) || {
+            "COMET USER": "COMETS101"
+        };
+
+        let sysConfig = JSON.parse(localStorage.getItem('comet_sys_config')) || {
+            username: "COMET USER",
+            passcode: "COMETS101",
+            wallpaper: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1920&auto=format&fit=crop",
+            accentColor: "#0078d4",
+            autoSignedIn: false
+        };
+
+        let isRegisterMode = false;
+        let customWebApps = JSON.parse(localStorage.getItem('comet_web_apps')) || [];
+
+        function saveWebApps() {
+            localStorage.setItem('comet_web_apps', JSON.stringify(customWebApps));
+            renderCustomWebApps();
+        }
+
+        function saveConfig() {
+            localStorage.setItem('comet_sys_config', JSON.stringify(sysConfig));
+            applyConfig();
+        }
+
+        function saveAccounts() {
+            localStorage.setItem('comet_accounts', JSON.stringify(registeredAccounts));
+        }
+
+        function applyConfig() {
+            document.documentElement.style.setProperty('--accent', sysConfig.accentColor);
+            document.documentElement.style.setProperty('--desktop-bg', `url('${sysConfig.wallpaper}')`);
+            document.getElementById('start-user-label').innerHTML = `<i class="fa-solid fa-circle-user"></i> ${sysConfig.username}`;
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            applyConfig();
+            renderCustomWebApps();
+            initTrayClockAndBattery();
+
+            if (sysConfig.autoSignedIn) {
+                document.getElementById('lock-screen').classList.add('unlocked');
+            }
+
+            setTimeout(() => {
+                document.getElementById('boot-screen').classList.add('fade-out');
+                setTimeout(() => document.getElementById('boot-screen').remove(), 500);
+            }, 1000);
+        });
+
+        function initTrayClockAndBattery() {
+            function updateClockDate() {
+                const now = new Date();
+                document.getElementById('clock-display').innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                document.getElementById('date-display').innerText = now.toLocaleDateString([], { month: 'short', day: 'numeric' });
+            }
+            updateClockDate();
+            setInterval(updateClockDate, 1000);
+
+            if ('getBattery' in navigator) {
+                navigator.getBattery().then(battery => {
+                    function updateBattery() {
+                        const level = Math.round(battery.level * 100);
+                        const isCharging = battery.charging;
+                        let iconClass = 'fa-battery-full';
+                        if (level <= 20) iconClass = 'fa-battery-quarter';
+                        else if (level <= 50) iconClass = 'fa-battery-half';
+                        else if (level <= 80) iconClass = 'fa-battery-three-quarters';
+
+                        document.getElementById('battery-display').innerHTML = `
+                            <i class="fa-solid ${isCharging ? 'fa-bolt' : iconClass}" style="color:${isCharging ? '#e3a835' : (level <= 20 ? '#f85149' : '#3fb950')};"></i> ${level}%
+                        `;
+                    }
+                    updateBattery();
+                    battery.addEventListener('levelchange', updateBattery);
+                    battery.addEventListener('chargingchange', updateBattery);
+                });
+            }
+        }
+
+        window.toggleAuthMode = function() {
+            isRegisterMode = !isRegisterMode;
+            const title = document.getElementById('auth-title');
+            const btn = document.getElementById('auth-main-btn');
+            const toggle = document.getElementById('auth-toggle');
+            const err = document.getElementById('auth-err');
+            err.style.display = 'none';
+
+            if (isRegisterMode) {
+                title.innerText = "Register Account";
+                btn.innerText = "Register & Sign In";
+                toggle.innerText = "Already have an account? Sign In";
+            } else {
+                title.innerText = "Sign In to COMET OS";
+                btn.innerText = "Sign In";
+                toggle.innerText = "New here? Register Account";
+            }
+        };
+
+        window.executeAuth = function() {
+            const userIn = document.getElementById('auth-user-input').value.trim();
+            const passIn = document.getElementById('auth-pass-input').value.trim();
+            const err = document.getElementById('auth-err');
+
+            if (!userIn || !passIn) {
+                err.innerText = "Please fill out all fields.";
+                err.style.display = 'block';
+                return;
+            }
+
+            if (isRegisterMode) {
+                registeredAccounts[userIn] = passIn;
+                saveAccounts();
+                sysConfig.username = userIn;
+                sysConfig.passcode = passIn;
+                sysConfig.autoSignedIn = true;
+                saveConfig();
+                document.getElementById('lock-screen').classList.add('unlocked');
+                err.style.display = 'none';
+            } else {
+                if (registeredAccounts[userIn] && registeredAccounts[userIn] === passIn) {
+                    sysConfig.username = userIn;
+                    sysConfig.passcode = passIn;
+                    sysConfig.autoSignedIn = true;
+                    saveConfig();
+                    document.getElementById('lock-screen').classList.add('unlocked');
+                    err.style.display = 'none';
+                } else {
+                    err.innerText = "Invalid Username or Passcode";
+                    err.style.display = 'block';
+                }
+            }
+        };
+
+        window.signOutOS = function() {
+            sysConfig.autoSignedIn = false;
+            saveConfig();
+            document.getElementById('lock-screen').classList.remove('unlocked');
+            if (document.getElementById('start-menu').classList.contains('active')) toggleStart();
+        };
+
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const ctx = document.getElementById('context-menu');
+            const targetIcon = e.target.closest('.app-icon');
+            let ctxHTML = '';
+
+            if (targetIcon) {
+                const appKey = targetIcon.dataset.app;
+                const isCustom = appKey && appKey.startsWith('app_');
+                ctxHTML = `
+                    <div class="ctx-header">App Commands</div>
+                    <div class="ctx-item" onclick="triggerAppLaunch('${appKey}')"><i class="fa-solid fa-folder-open"></i> Launch App</div>
+                    ${isCustom ? `<div class="ctx-item danger" onclick="uninstallWebApp('${appKey}')"><i class="fa-solid fa-trash"></i> Delete App</div>` : ''}
+                `;
+            } else {
+                ctxHTML = `
+                    <div class="ctx-header">COMET OS v10</div>
+                    <div class="ctx-item" onclick="openApp('app_store'); hideContext();"><i class="fa-solid fa-store"></i> Open App Store</div>
+                    <div class="ctx-item" onclick="openApp('app_publisher'); hideContext();"><i class="fa-solid fa-upload"></i> Upload App</div>
+                    <div class="ctx-item" onclick="openApp('settings'); hideContext();"><i class="fa-solid fa-palette"></i> Customize Desktop</div>
+                    <div class="ctx-divider"></div>
+                    <div class="ctx-item" onclick="lockOS(); hideContext();"><i class="fa-solid fa-lock"></i> Lock OS</div>
+                `;
+            }
+
+            ctx.innerHTML = ctxHTML;
+            ctx.style.display = 'flex';
+            ctx.style.left = `${Math.min(e.clientX, window.innerWidth - 230)}px`;
+            ctx.style.top = `${Math.min(e.clientY, window.innerHeight - 260)}px`;
+        });
+
+        window.hideContext = function() { document.getElementById('context-menu').style.display = 'none'; };
+
+        window.triggerAppLaunch = function(key) {
+            hideContext();
+            if (key.startsWith('app_')) {
+                const found = customWebApps.find(a => a.id === key);
+                if (found) openWebApp(found);
+            } else {
+                openApp(key);
+            }
+        };
+
+        window.uninstallWebApp = function(id) {
+            hideContext();
+            customWebApps = customWebApps.filter(a => a.id !== id);
+            saveWebApps();
+            if (windows[id]) closeWin(id);
+        };
+
+        window.lockOS = function() {
+            document.getElementById('lock-screen').classList.remove('unlocked');
+            if (document.getElementById('start-menu').classList.contains('active')) toggleStart();
+        };
+
+        window.toggleStart = function() { document.getElementById('start-menu').classList.toggle('active'); };
+
+        let windows = {};
+        let topZ = 100;
+
+        function renderCustomWebApps() {
+            const container = document.getElementById('custom-desktop-apps');
+            container.innerHTML = '';
+            customWebApps.forEach(app => {
+                const appEl = document.createElement('div');
+                appEl.className = 'app-icon';
+                appEl.dataset.app = app.id;
+                appEl.onclick = () => openWebApp(app);
+                
+                let iconHTML = `<i class="${app.icon || 'fa-solid fa-code'}" style="color:${app.color || '#38bdf8'};"></i>`;
+                if (app.customImageUrl) {
+                    iconHTML = `<img src="${app.customImageUrl}" class="custom-app-icon" alt="${app.name}">`;
+                }
+
+                appEl.innerHTML = `${iconHTML}<span>${app.name}</span>`;
+                container.appendChild(appEl);
+            });
+        }
+
+        let pendingAppFile = null;
+        let activeChatServer = 'Global Chat';
+
+        const appRegistry = {
+            app_publisher: {
+                title: "App Publisher Studio", icon: "fa-upload", color: "#38bdf8",
+                content: `
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                        <div style="font-size:12px; color:var(--text-sub);">Upload apps to the global Cloud Store under your name.</div>
+                        <input type="text" id="pub-app-name" placeholder="App Name">
+                        
+                        <div style="display:flex; gap:10px;">
+                            <div style="flex:1;">
+                                <label style="font-size:10px; color:var(--text-sub);">Category</label>
+                                <select id="pub-app-cat">
+                                    <option value="Games">Games</option>
+                                    <option value="Video Players">Video Players</option>
+                                    <option value="Sites">Sites</option>
+                                    <option value="Utilities">Utilities</option>
+                                    <option value="Tools">Tools</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div style="flex:1;">
+                                <label style="font-size:10px; color:var(--text-sub);">Standard Icon</label>
+                                <select id="pub-app-icon">
+                                    <option value="fa-solid fa-gamepad">Gamepad Icon</option>
+                                    <option value="fa-solid fa-video">Video Icon</option>
+                                    <option value="fa-solid fa-globe">Global Web Icon</option>
+                                    <option value="fa-solid fa-code">Developer Icon</option>
+                                    <option value="fa-solid fa-screwdriver-wrench">Tools Icon</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label style="font-size:10px; color:var(--text-sub);">Custom App Icon Image URL (Optional)</label>
+                            <input type="text" id="pub-app-img-url" placeholder="https://example.com/logo.png">
+                        </div>
+
+                        <input type="text" id="pub-app-color" placeholder="Hex Accent Color (#38bdf8)" value="#38bdf8">
+                        
+                        <div style="padding:10px; border:1px dashed var(--border-glass); border-radius:6px; background:rgba(0,0,0,0.3);">
+                            <div style="font-size:11px; margin-bottom:6px;">Target Resource (Website URL or HTML File):</div>
+                            <input type="text" id="pub-app-url" placeholder="Website URL (e.g. https://example.com)">
+                            <div style="text-align:center; font-size:10px; margin:6px 0; color:var(--text-sub);">- OR -</div>
+                            <input type="file" id="pub-app-file" accept=".html,.htm" onchange="handlePubFile(event)">
+                        </div>
+
+                        <button class="btn-os" onclick="publishAppToStore()"><i class="fa-solid fa-cloud-arrow-up"></i> Publish to App Store</button>
+                    </div>`
+            },
+            app_store: {
+                title: "COMET App Store", icon: "fa-store", color: "#a855f7",
+                content: `
+                    <div style="display:flex; flex-direction:column; height:100%;">
+                        <div style="display:flex; gap:10px; margin-bottom:12px;">
+                            <select id="store-cat-filter" onchange="fetchStoreApps()" style="width:180px;">
+                                <option value="ALL">All Categories</option>
+                                <option value="Games">Games</option>
+                                <option value="Video Players">Video Players</option>
+                                <option value="Sites">Sites</option>
+                                <option value="Utilities">Utilities</option>
+                                <option value="Tools">Tools</option>
+                                <option value="Other">Other</option>
+                            </select>
+                            <button class="btn-os" onclick="fetchStoreApps()"><i class="fa-solid fa-rotate-right"></i> Refresh Store</button>
+                        </div>
+                        <div id="store-app-list" class="store-grid"></div>
+                    </div>`,
+                init: () => fetchStoreApps()
+            },
+            chat: {
+                title: "Discord Chat Server Engine", icon: "fa-discord", color: "#5865F2",
+                content: `
+                    <div class="chat-container">
+                        <div class="chat-sidebar">
+                            <div style="padding:8px; border-bottom:1px solid #30363d; display:flex; flex-direction:column; gap:6px;">
+                                <button class="btn-os" style="width:100%; font-size:11px;" onclick="createNewServer()"><i class="fa-solid fa-plus"></i> Claim Server Name</button>
+                                <input type="text" id="server-search-input" placeholder="Search servers..." onkeyup="searchChatServers()" style="padding:4px 8px; font-size:11px;">
+                            </div>
+                            <div id="server-list-container" style="flex:1; overflow-y:auto;"></div>
+                        </div>
+                        <div class="chat-main">
+                            <div style="padding:8px 12px; background:#161b22; border-bottom:1px solid #30363d; font-size:12px; font-weight:bold; display:flex; justify-content:space-between;" id="active-server-header">
+                                # Global Chat
+                            </div>
+                            <div id="chat-msgs" style="flex:1; padding:12px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
+                            <div style="display:flex; padding:8px; background:#161b22; border-top:1px solid #30363d; gap:8px;">
+                                <input type="text" id="chat-in" placeholder="Write message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+                                <button class="btn-os" onclick="sendChatMessage()">Send</button>
+                            </div>
+                        </div>
+                    </div>`,
+                init: () => initChatEngine()
+            },
+            files: {
+                title: "File Explorer", icon: "fa-folder-open", color: "#e3a835",
+                content: `
+                    <div style="display:flex; flex-direction:column; gap:16px;">
+                        <div style="padding:16px; border:1px dashed var(--border-glass); border-radius:var(--radius-md); background:rgba(0,0,0,0.3); text-align:center;">
+                            <i class="fa-solid fa-file-code" style="font-size:32px; color:#38bdf8; margin-bottom:10px;"></i>
+                            <div style="font-size:13px; font-weight:600; margin-bottom:4px;">HTML File Importer</div>
+                            <div style="font-size:11px; color:var(--text-sub); margin-bottom:12px;">Select an HTML file (.html, .htm) to mount directly onto your desktop.</div>
+                            <input type="file" id="html-file-uploader" accept=".html,.htm" onchange="handleHTMLUpload(event)" style="display:none;">
+                            <button class="btn-os" onclick="document.getElementById('html-file-uploader').click()"><i class="fa-solid fa-upload"></i> Mount HTML File</button>
+                        </div>
+                    </div>`
+            },
+            settings: {
+                title: "Settings & Personalization", icon: "fa-gear", color: "#8b949e",
+                content: `
+                    <div style="display:flex; flex-direction:column; gap:14px;">
+                        <div style="font-weight:600; font-size:13px; border-bottom:1px solid var(--border-glass); padding-bottom:4px;">Desktop Wallpaper</div>
+                        <div>
+                            <label style="font-size:10px; color:var(--text-sub);">Custom Wallpaper Image URL</label>
+                            <input type="text" id="cfg-bg-url" placeholder="Paste image link (https://...)">
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn-os" onclick="setPresetWallpaper('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1920&auto=format&fit=crop')">Reset to Default Wallpaper</button>
+                        </div>
+
+                        <div style="font-weight:600; font-size:13px; border-bottom:1px solid var(--border-glass); padding-bottom:4px; margin-top:8px;">Account Security</div>
+                        <input type="text" id="cfg-user" placeholder="Account Name">
+                        <input type="password" id="cfg-pass" placeholder="New Passcode">
+
+                        <div style="display:flex; gap:10px; margin-top:6px;">
+                            <button class="btn-os" onclick="applyAccountSettings()"><i class="fa-solid fa-floppy-disk"></i> Apply Settings</button>
+                            <button class="btn-os btn-os-danger" onclick="signOutOS()"><i class="fa-solid fa-right-from-bracket"></i> Sign Out Account</button>
+                        </div>
+                    </div>`,
+                init: () => {
+                    document.getElementById('cfg-user').value = sysConfig.username;
+                    document.getElementById('cfg-pass').value = sysConfig.passcode;
+                    document.getElementById('cfg-bg-url').value = sysConfig.wallpaper;
+                }
+            }
+        };
+
+        window.setPresetWallpaper = function(url) {
+            document.getElementById('cfg-bg-url').value = url;
+            sysConfig.wallpaper = url;
+            saveConfig();
+        };
+
+        window.handlePubFile = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => { pendingAppFile = evt.target.result; };
+            reader.readAsText(file);
+        };
+
+        window.publishAppToStore = function() {
+            const name = document.getElementById('pub-app-name').value.trim();
+            const category = document.getElementById('pub-app-cat').value;
+            const icon = document.getElementById('pub-app-icon').value;
+            const customImageUrl = document.getElementById('pub-app-img-url').value.trim();
+            const color = document.getElementById('pub-app-color').value.trim() || "#38bdf8";
+            const url = document.getElementById('pub-app-url').value.trim();
+
+            if (!name) { alert("App Title required!"); return; }
+            if (!url && !pendingAppFile) { alert("Please provide a site URL or an HTML File!"); return; }
+
+            const payload = {
+                name, category, icon, color,
+                customImageUrl: customImageUrl || null,
+                author: sysConfig.username,
+                url: url || null,
+                htmlContent: pendingAppFile || null,
+                timestamp: Date.now()
+            };
+
+            push(ref(db, 'app_store'), payload).then(() => {
+                alert(`App "${name}" successfully uploaded to the global App Store!`);
+                pendingAppFile = null;
+                closeWin('app_publisher');
+            });
+        };
+
+        window.fetchStoreApps = function() {
+            const listEl = document.getElementById('store-app-list');
+            if (!listEl) return;
+            const filter = document.getElementById('store-cat-filter').value;
+
+            get(ref(db, 'app_store')).then((snapshot) => {
+                listEl.innerHTML = '';
+                const data = snapshot.val();
+                if (data) {
+                    Object.entries(data).forEach(([key, app]) => {
+                        if (filter !== 'ALL' && app.category !== filter) return;
+                        const card = document.createElement('div');
+                        card.className = 'store-card';
+                        
+                        let displayIcon = `<i class="${app.icon || 'fa-solid fa-box'}" style="color:${app.color || '#a855f7'};"></i>`;
+                        if (app.customImageUrl) {
+                            displayIcon = `<img src="${app.customImageUrl}" class="store-icon-img" alt="${app.name}">`;
+                        }
+
+                        card.innerHTML = `
+                            ${displayIcon}
+                            <div style="font-weight:600; font-size:12px;">${app.name}</div>
+                            <div style="font-size:10px; color:var(--text-sub);">By ${app.author} | ${app.category}</div>
+                            <button class="btn-os" style="margin-top:6px; font-size:10px;" onclick="installAppFromStore('${key}')"><i class="fa-solid fa-download"></i> Install App</button>
+                        `;
+                        listEl.appendChild(card);
+                    });
+                } else {
+                    listEl.innerHTML = `<div style="font-size:12px; color:var(--text-sub); grid-column:1/-1; text-align:center;">No published apps found.</div>`;
+                }
+            });
+        };
+
+        window.installAppFromStore = function(storeKey) {
+            get(ref(db, `app_store/${storeKey}`)).then((snapshot) => {
+                const appObj = snapshot.val();
+                if (appObj) {
+                    appObj.id = 'app_' + Date.now();
+                    customWebApps.push(appObj);
+                    saveWebApps();
+                    alert(`"${appObj.name}" installed directly onto your desktop!`);
+                }
+            });
+        };
+
+        let serverList = [];
+
+        function initChatEngine() {
+            onValue(ref(db, 'chat_servers'), (snapshot) => {
+                const data = snapshot.val();
+                serverList = [];
+                if (data) {
+                    Object.keys(data).forEach(sName => serverList.push(sName));
+                }
+                if (!serverList.includes('Global Chat')) {
+                    set(ref(db, 'chat_servers/Global Chat/claimedBy'), 'SYSTEM');
+                    serverList.push('Global Chat');
+                }
+                renderServerList(serverList);
+            });
+            listenToChatServer(activeChatServer);
+        }
+
+        function renderServerList(list) {
+            const container = document.getElementById('server-list-container');
+            if (!container) return;
+            container.innerHTML = '';
+            list.forEach(srvName => {
+                const item = document.createElement('div');
+                item.className = `server-item ${srvName === activeChatServer ? 'active' : ''}`;
+                item.innerHTML = `<i class="fa-solid fa-hashtag"></i> ${srvName}`;
+                item.onclick = () => switchChatServer(srvName);
+                container.appendChild(item);
+            });
+        }
+
+        window.searchChatServers = function() {
+            const q = document.getElementById('server-search-input').value.toLowerCase();
+            renderServerList(serverList.filter(s => s.toLowerCase().includes(q)));
+        };
+
+        window.createNewServer = function() {
+            const name = prompt("Enter new Server Name:")?.trim();
+            if (!name) return;
+
+            get(ref(db, `chat_servers/${name}`)).then((snapshot) => {
+                if (snapshot.exists()) {
+                    alert(`Server name "${name}" is already officially claimed!`);
+                } else {
+                    set(ref(db, `chat_servers/${name}`), {
+                        claimedBy: sysConfig.username,
+                        createdAt: Date.now()
+                    }).then(() => {
+                        alert(`You now officially own the server "#${name}"!`);
+                        switchChatServer(name);
+                    });
+                }
+            });
+        };
+
+        function switchChatServer(srvName) {
+            activeChatServer = srvName;
+            document.getElementById('active-server-header').innerText = `# ${srvName}`;
+            renderServerList(serverList);
+            listenToChatServer(srvName);
+        }
+
+        function listenToChatServer(srvName) {
+            onValue(ref(db, `chat_servers/${srvName}/messages`), (snapshot) => {
+                const msgsEl = document.getElementById('chat-msgs');
+                if (!msgsEl) return;
+                msgsEl.innerHTML = '';
+                const data = snapshot.val();
+                if (data) {
+                    Object.values(data).forEach(m => {
+                        const bubble = document.createElement('div');
+                        bubble.style.cssText = `max-width:80%; padding:8px 12px; border-radius:6px; font-size:12px; ${m.user === sysConfig.username ? 'align-self:flex-end; background:#0078d4; color:#fff;' : 'align-self:flex-start; background:#161b22; border:1px solid #30363d; color:#e6edf3;'}`;
+                        bubble.innerHTML = `<div style="font-size:10px; opacity:0.7; font-weight:600; margin-bottom:2px;">${m.user}</div>${m.text}`;
+                        msgsEl.appendChild(bubble);
+                    });
+                    msgsEl.scrollTop = msgsEl.scrollHeight;
+                }
+            });
+        }
+
+        window.sendChatMessage = function() {
+            const input = document.getElementById('chat-in');
+            if (input.value.trim()) {
+                push(ref(db, `chat_servers/${activeChatServer}/messages`), {
+                    user: sysConfig.username,
+                    text: input.value.trim(),
+                    timestamp: Date.now()
+                });
+                input.value = '';
+            }
+        };
+
+        window.handleHTMLUpload = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const appName = file.name.replace(/\.[^/.]+$/, "");
+                const appObj = { id: 'app_' + Date.now(), name: appName, htmlContent: evt.target.result, icon: 'fa-solid fa-code', color: '#38bdf8' };
+                customWebApps.push(appObj);
+                saveWebApps();
+                alert(`Loaded "${appName}" to desktop!`);
+            };
+            reader.readAsText(file);
+        };
+
+        window.openWebApp = function(appObj) {
+            if (windows[appObj.id]) { focusWindow(windows[appObj.id]); return; }
+            topZ++;
+
+            const win = document.createElement('div');
+            win.className = 'os-window active';
+            win.style.zIndex = topZ;
+            win.style.top = '50px'; win.style.left = '70px';
+
+            let iconHeaderHTML = `<i class="${appObj.icon || 'fa-solid fa-code'}" style="color:${appObj.color || '#38bdf8'}"></i>`;
+            if (appObj.customImageUrl) {
+                iconHeaderHTML = `<img src="${appObj.customImageUrl}" style="width:16px; height:16px; border-radius:3px; object-fit:cover;">`;
+            }
+
+            win.innerHTML = `
+                <div class="window-header" onmousedown="dragWin(event, '${appObj.id}')">
+                    <div class="window-title">${iconHeaderHTML} ${appObj.name}</div>
+                    <div class="window-controls">
+                        <button class="control-btn" onclick="toggleMax('${appObj.id}')"><i class="fa-regular fa-square"></i></button>
+                        <button class="control-btn btn-close" onclick="closeWin('${appObj.id}')"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                </div>
+                <div class="window-content" style="padding:0;">
+                    <iframe id="iframe-${appObj.id}" style="width:100%; height:100%; border:none; background:white;"></iframe>
+                </div>
+            `;
+
+            document.getElementById('windows-container').appendChild(win);
+            windows[appObj.id] = win;
+            appRegistry[appObj.id] = { title: appObj.name, icon: appObj.icon || 'fa-solid fa-code', color: appObj.color || '#38bdf8', customImageUrl: appObj.customImageUrl };
+
+            const frame = document.getElementById(`iframe-${appObj.id}`);
+            if (appObj.htmlContent) {
+                frame.srcdoc = appObj.htmlContent;
+            } else if (appObj.url) {
+                frame.src = appObj.url;
+            }
+
+            renderTaskbar();
+        };
+
+        window.openApp = function(id) {
+            if (windows[id]) { focusWindow(windows[id]); return; }
+            const config = appRegistry[id];
+            topZ++;
+
+            const win = document.createElement('div');
+            win.className = 'os-window active';
+            win.style.zIndex = topZ;
+            win.style.top = '60px'; win.style.left = '100px';
+
+            win.innerHTML = `
+                <div class="window-header" onmousedown="dragWin(event, '${id}')">
+                    <div class="window-title"><i class="fa-solid ${config.icon}" style="color:${config.color}"></i> ${config.title}</div>
+                    <div class="window-controls">
+                        <button class="control-btn" onclick="toggleMax('${id}')"><i class="fa-regular fa-square"></i></button>
+                        <button class="control-btn btn-close" onclick="closeWin('${id}')"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                </div>
+                <div class="window-content">${config.content}</div>
+            `;
+
+            document.getElementById('windows-container').appendChild(win);
+            windows[id] = win;
+            if (config.init) config.init();
+            renderTaskbar();
+        };
+
+        window.closeWin = function(id) {
+            if (windows[id]) {
+                windows[id].remove();
+                delete windows[id];
+                renderTaskbar();
+            }
+        };
+
+        window.toggleMax = function(id) { windows[id].classList.toggle('maximized'); };
+
+        function focusWindow(win) {
+            topZ++;
+            win.style.zIndex = topZ;
+        }
+
+        window.dragWin = function(e, id) {
+            const win = windows[id];
+            focusWindow(win);
+            let sx = e.clientX - win.offsetLeft, sy = e.clientY - win.offsetTop;
+            function move(ev) { win.style.left = (ev.clientX - sx) + 'px'; win.style.top = (ev.clientY - sy) + 'px'; }
+            function stop() { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', stop); }
+            window.addEventListener('mousemove', move); window.addEventListener('mouseup', stop);
+        };
+
+        function renderTaskbar() {
+            const c = document.getElementById('tb-apps');
+            c.innerHTML = '';
+            for (let id in windows) {
+                const b = document.createElement('button');
+                b.className = 'taskbar-btn active-win';
+                
+                let iconDisplay = `<i class="${appRegistry[id].icon}" style="color:${appRegistry[id].color}"></i>`;
+                if (appRegistry[id].customImageUrl) {
+                    iconDisplay = `<img src="${appRegistry[id].customImageUrl}" style="width:20px; height:20px; border-radius:4px; object-fit:cover;">`;
+                }
+
+                b.innerHTML = iconDisplay;
+                b.onclick = () => focusWindow(windows[id]);
+                c.appendChild(b);
+            }
+        }
+
+        window.applyAccountSettings = function() {
+            const u = document.getElementById('cfg-user').value;
+            const p = document.getElementById('cfg-pass').value;
+            const bg = document.getElementById('cfg-bg-url').value;
+
+            if (u) {
+                registeredAccounts[u] = p || sysConfig.passcode;
+                sysConfig.username = u;
+            }
+            if (p) sysConfig.passcode = p;
+            if (bg) sysConfig.wallpaper = bg;
+
+            saveAccounts();
+            saveConfig();
+            alert("Settings Updated!");
+        };
+    </script>
+</body>
+</html>
