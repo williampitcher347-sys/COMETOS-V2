@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>COMET OS v10</title>
+    <title>COMET OS v11</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -156,7 +156,7 @@
     <div id="boot-screen">
         <i class="fa-solid fa-microchip boot-icon"></i>
         <div class="spinner"></div>
-        <div style="margin-top:20px; font-size:12px; color:#8b949e; letter-spacing:1px;" id="boot-status">STARTING COMET OS v10...</div>
+        <div style="margin-top:20px; font-size:12px; color:#8b949e; letter-spacing:1px;" id="boot-status">STARTING COMET OS v11...</div>
     </div>
 
     <div id="lock-screen">
@@ -192,7 +192,7 @@
         </div>
         <div class="app-icon" data-app="files" onclick="openApp('files')">
             <i class="fa-solid fa-folder-open" style="color:#e3a835;"></i>
-            <span>Files</span>
+            <span>Files Vault</span>
         </div>
         <div class="app-icon" data-app="settings" onclick="openApp('settings')">
             <i class="fa-solid fa-gear" style="color:#8b949e;"></i>
@@ -240,6 +240,59 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
         import { getDatabase, ref, push, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
+        // --- IndexedDB Vault Setup (Supports multi-MB/GB games like FNAF & GD) ---
+        const DB_NAME = 'COMET_OS_Vault';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'app_blobs';
+
+        function initVaultDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(DB_NAME, DB_VERSION);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME);
+                    }
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function saveBlobToVault(key, blob) {
+            const db = await initVaultDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.put(blob, key);
+                req.onsuccess = () => resolve(true);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function getBlobFromVault(key) {
+            const db = await initVaultDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.get(key);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function deleteBlobFromVault(key) {
+            const db = await initVaultDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.delete(key);
+                req.onsuccess = () => resolve(true);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        // --- Firebase Configuration ---
         const firebaseConfig = {
             apiKey: "AIzaSyB0_-Jf3b74dkFr2VsQ7OYq6DzPqN5lb6s",
             authDomain: "comet-os-v2.firebaseapp.com",
@@ -268,6 +321,7 @@
 
         let isRegisterMode = false;
         let customWebApps = JSON.parse(localStorage.getItem('comet_web_apps')) || [];
+        let activeBlobUrls = {};
 
         function saveWebApps() {
             localStorage.setItem('comet_web_apps', JSON.stringify(customWebApps));
@@ -411,7 +465,7 @@
                 `;
             } else {
                 ctxHTML = `
-                    <div class="ctx-header">COMET OS v10</div>
+                    <div class="ctx-header">COMET OS v11</div>
                     <div class="ctx-item" onclick="openApp('app_store'); hideContext();"><i class="fa-solid fa-store"></i> Open App Store</div>
                     <div class="ctx-item" onclick="openApp('app_publisher'); hideContext();"><i class="fa-solid fa-upload"></i> Upload App</div>
                     <div class="ctx-item" onclick="openApp('settings'); hideContext();"><i class="fa-solid fa-palette"></i> Customize Desktop</div>
@@ -438,10 +492,11 @@
             }
         };
 
-        window.uninstallWebApp = function(id) {
+        window.uninstallWebApp = async function(id) {
             hideContext();
             customWebApps = customWebApps.filter(a => a.id !== id);
             saveWebApps();
+            await deleteBlobFromVault(id);
             if (windows[id]) closeWin(id);
         };
 
@@ -464,7 +519,7 @@
                 appEl.dataset.app = app.id;
                 appEl.onclick = () => openWebApp(app);
                 
-                let iconHTML = `<i class="${app.icon || 'fa-solid fa-code'}" style="color:${app.color || '#38bdf8'};"></i>`;
+                let iconHTML = `<i class="${app.icon || 'fa-solid fa-gamepad'}" style="color:${app.color || '#38bdf8'};"></i>`;
                 if (app.customImageUrl) {
                     iconHTML = `<img src="${app.customImageUrl}" class="custom-app-icon" alt="${app.name}">`;
                 }
@@ -474,7 +529,7 @@
             });
         }
 
-        let pendingAppFile = null;
+        let pendingAppBlob = null;
         let activeChatServer = 'Global Chat';
 
         const appRegistry = {
@@ -571,15 +626,15 @@
                 init: () => initChatEngine()
             },
             files: {
-                title: "File Explorer", icon: "fa-folder-open", color: "#e3a835",
+                title: "Files & Games Storage Vault", icon: "fa-folder-open", color: "#e3a835",
                 content: `
                     <div style="display:flex; flex-direction:column; gap:16px;">
                         <div style="padding:16px; border:1px dashed var(--border-glass); border-radius:var(--radius-md); background:rgba(0,0,0,0.3); text-align:center;">
-                            <i class="fa-solid fa-file-code" style="font-size:32px; color:#38bdf8; margin-bottom:10px;"></i>
-                            <div style="font-size:13px; font-weight:600; margin-bottom:4px;">HTML File Importer</div>
-                            <div style="font-size:11px; color:var(--text-sub); margin-bottom:12px;">Select an HTML file (.html, .htm) to mount directly onto your desktop.</div>
-                            <input type="file" id="html-file-uploader" accept=".html,.htm" onchange="handleHTMLUpload(event)" style="display:none;">
-                            <button class="btn-os" onclick="document.getElementById('html-file-uploader').click()"><i class="fa-solid fa-upload"></i> Mount HTML File</button>
+                            <i class="fa-solid fa-box-archive" style="font-size:32px; color:#38bdf8; margin-bottom:10px;"></i>
+                            <div style="font-size:13px; font-weight:600; margin-bottom:4px;">IndexedDB Game & File Vault</div>
+                            <div style="font-size:11px; color:var(--text-sub); margin-bottom:12px;">Upload high-capacity offline games (FNAF, Geometry Dash, Flight Simulators) safely without browser size limits.</div>
+                            <input type="file" id="html-file-uploader" accept=".html,.htm" onchange="handleHTMLVaultUpload(event)" style="display:none;">
+                            <button class="btn-os" onclick="document.getElementById('html-file-uploader').click()"><i class="fa-solid fa-file-circle-plus"></i> Upload Game or App File</button>
                         </div>
                     </div>`
             },
@@ -622,9 +677,7 @@
         window.handlePubFile = function(e) {
             const file = e.target.files[0];
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (evt) => { pendingAppFile = evt.target.result; };
-            reader.readAsText(file);
+            pendingAppBlob = file;
         };
 
         window.publishAppToStore = function() {
@@ -636,22 +689,40 @@
             const url = document.getElementById('pub-app-url').value.trim();
 
             if (!name) { alert("App Title required!"); return; }
-            if (!url && !pendingAppFile) { alert("Please provide a site URL or an HTML File!"); return; }
+            if (!url && !pendingAppBlob) { alert("Please provide a site URL or an HTML File!"); return; }
 
-            const payload = {
-                name, category, icon, color,
-                customImageUrl: customImageUrl || null,
-                author: sysConfig.username,
-                url: url || null,
-                htmlContent: pendingAppFile || null,
-                timestamp: Date.now()
-            };
-
-            push(ref(db, 'app_store'), payload).then(() => {
-                alert(`App "${name}" successfully uploaded to the global App Store!`);
-                pendingAppFile = null;
-                closeWin('app_publisher');
-            });
+            if (pendingAppBlob) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    const payload = {
+                        name, category, icon, color,
+                        customImageUrl: customImageUrl || null,
+                        author: sysConfig.username,
+                        url: null,
+                        htmlContent: evt.target.result,
+                        timestamp: Date.now()
+                    };
+                    push(ref(db, 'app_store'), payload).then(() => {
+                        alert(`App "${name}" successfully uploaded to the global App Store!`);
+                        pendingAppBlob = null;
+                        closeWin('app_publisher');
+                    });
+                };
+                reader.readAsText(pendingAppBlob);
+            } else {
+                const payload = {
+                    name, category, icon, color,
+                    customImageUrl: customImageUrl || null,
+                    author: sysConfig.username,
+                    url: url,
+                    htmlContent: null,
+                    timestamp: Date.now()
+                };
+                push(ref(db, 'app_store'), payload).then(() => {
+                    alert(`App "${name}" successfully uploaded to the global App Store!`);
+                    closeWin('app_publisher');
+                });
+            }
         };
 
         window.fetchStoreApps = function() {
@@ -688,10 +759,16 @@
         };
 
         window.installAppFromStore = function(storeKey) {
-            get(ref(db, `app_store/${storeKey}`)).then((snapshot) => {
+            get(ref(db, `app_store/${storeKey}`)).then(async (snapshot) => {
                 const appObj = snapshot.val();
                 if (appObj) {
                     appObj.id = 'app_' + Date.now();
+                    if (appObj.htmlContent) {
+                        const blob = new Blob([appObj.htmlContent], { type: 'text/html' });
+                        await saveBlobToVault(appObj.id, blob);
+                        appObj.isVaultApp = true;
+                        delete appObj.htmlContent;
+                    }
                     customWebApps.push(appObj);
                     saveWebApps();
                     alert(`"${appObj.name}" installed directly onto your desktop!`);
@@ -791,22 +868,29 @@
             }
         };
 
-        window.handleHTMLUpload = function(e) {
+        window.handleHTMLVaultUpload = async function(e) {
             const file = e.target.files[0];
             if (!file) return;
 
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                const appName = file.name.replace(/\.[^/.]+$/, "");
-                const appObj = { id: 'app_' + Date.now(), name: appName, htmlContent: evt.target.result, icon: 'fa-solid fa-code', color: '#38bdf8' };
-                customWebApps.push(appObj);
-                saveWebApps();
-                alert(`Loaded "${appName}" to desktop!`);
+            const appId = 'app_' + Date.now();
+            const appName = file.name.replace(/\.[^/.]+$/, "");
+
+            await saveBlobToVault(appId, file);
+
+            const appObj = {
+                id: appId,
+                name: appName,
+                isVaultApp: true,
+                icon: 'fa-solid fa-gamepad',
+                color: '#38bdf8'
             };
-            reader.readAsText(file);
+
+            customWebApps.push(appObj);
+            saveWebApps();
+            alert(`"${appName}" saved to Vault and mounted to Desktop!`);
         };
 
-        window.openWebApp = function(appObj) {
+        window.openWebApp = async function(appObj) {
             if (windows[appObj.id]) { focusWindow(windows[appObj.id]); return; }
             topZ++;
 
@@ -815,7 +899,7 @@
             win.style.zIndex = topZ;
             win.style.top = '50px'; win.style.left = '70px';
 
-            let iconHeaderHTML = `<i class="${appObj.icon || 'fa-solid fa-code'}" style="color:${appObj.color || '#38bdf8'}"></i>`;
+            let iconHeaderHTML = `<i class="${appObj.icon || 'fa-solid fa-gamepad'}" style="color:${appObj.color || '#38bdf8'}"></i>`;
             if (appObj.customImageUrl) {
                 iconHeaderHTML = `<img src="${appObj.customImageUrl}" style="width:16px; height:16px; border-radius:3px; object-fit:cover;">`;
             }
@@ -829,16 +913,26 @@
                     </div>
                 </div>
                 <div class="window-content" style="padding:0;">
-                    <iframe id="iframe-${appObj.id}" style="width:100%; height:100%; border:none; background:white;"></iframe>
+                    <iframe id="iframe-${appObj.id}" sandbox="allow-scripts allow-same-origin allow-forms" style="width:100%; height:100%; border:none; background:white;"></iframe>
                 </div>
             `;
 
             document.getElementById('windows-container').appendChild(win);
             windows[appObj.id] = win;
-            appRegistry[appObj.id] = { title: appObj.name, icon: appObj.icon || 'fa-solid fa-code', color: appObj.color || '#38bdf8', customImageUrl: appObj.customImageUrl };
+            appRegistry[appObj.id] = { title: appObj.name, icon: appObj.icon || 'fa-solid fa-gamepad', color: appObj.color || '#38bdf8', customImageUrl: appObj.customImageUrl };
 
             const frame = document.getElementById(`iframe-${appObj.id}`);
-            if (appObj.htmlContent) {
+
+            if (appObj.isVaultApp) {
+                const blob = await getBlobFromVault(appObj.id);
+                if (blob) {
+                    const blobUrl = URL.createObjectURL(blob);
+                    activeBlobUrls[appObj.id] = blobUrl;
+                    frame.src = blobUrl;
+                } else {
+                    alert("Error: Game binary not found in Vault.");
+                }
+            } else if (appObj.htmlContent) {
                 frame.srcdoc = appObj.htmlContent;
             } else if (appObj.url) {
                 frame.src = appObj.url;
@@ -876,6 +970,10 @@
 
         window.closeWin = function(id) {
             if (windows[id]) {
+                if (activeBlobUrls[id]) {
+                    URL.revokeObjectURL(activeBlobUrls[id]);
+                    delete activeBlobUrls[id];
+                }
                 windows[id].remove();
                 delete windows[id];
                 renderTaskbar();
